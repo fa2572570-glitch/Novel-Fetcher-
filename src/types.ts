@@ -19,6 +19,7 @@ export interface FetchSettings {
   copyFormat: 'plaintext' | 'markdown' | 'html';
   chapterHeaderTemplate: string;
   fontSize: 'sm' | 'md' | 'lg' | 'xl';
+  fetchMode: 'standard' | 'browser_assisted';
   cleaningRules: CleaningRules;
 }
 
@@ -29,7 +30,11 @@ export interface FetchDiagnostics {
   httpStatus: number;
   attemptsMade: number;
   fetchMethod: string;
+  fetchMode: 'standard' | 'browser_assisted';
+  htmlSource: 'server_http' | 'browser_session';
   parserUsed: string;
+  protectionDetected: boolean;
+  protectionType?: string;
   timeTakenMs: number;
   cause: string;
   possibleCauses: string[];

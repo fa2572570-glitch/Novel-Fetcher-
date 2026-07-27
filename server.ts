@@ -8,6 +8,65 @@ import { cleanChapterContent, countWordsAndChars } from './src/services/cleaner'
 import { FetchDiagnostics, ParserTestResult } from './src/types';
 
 /**
+ * Detect Protection / Verification / CAPTCHA / Firewall Challenge Pages
+ */
+function detectProtectionPage(html: string, httpStatus: number): { detected: boolean; type?: string } {
+  if (!html) {
+    if (httpStatus === 403 || httpStatus === 503) {
+      return { detected: true, type: 'HTTP ' + httpStatus + ' Access Forbidden' };
+    }
+    return { detected: false };
+  }
+
+  const lowerHtml = html.toLowerCase();
+
+  // Cloudflare markers
+  if (
+    lowerHtml.includes('cf-challenge') ||
+    lowerHtml.includes('cf-browser-verification') ||
+    lowerHtml.includes('just a moment...') ||
+    lowerHtml.includes('attention required! | cloudflare') ||
+    lowerHtml.includes('enable javascript and cookies to continue') ||
+    lowerHtml.includes('cf_chl_opt') ||
+    lowerHtml.includes('cloudflare ray id') ||
+    lowerHtml.includes('turnstile-wrapper')
+  ) {
+    return { detected: true, type: 'Cloudflare Anti-Bot Challenge' };
+  }
+
+  // DDoS-Guard
+  if (lowerHtml.includes('ddos-guard') || lowerHtml.includes('ddosguard')) {
+    return { detected: true, type: 'DDoS-Guard Security Verification' };
+  }
+
+  // Imperva Incapsula
+  if (lowerHtml.includes('_incapsula_resource') || lowerHtml.includes('incapsula')) {
+    return { detected: true, type: 'Imperva Incapsula Verification' };
+  }
+
+  // CAPTCHA / Human verification
+  if (
+    (lowerHtml.includes('g-recaptcha') || lowerHtml.includes('h-captcha') || lowerHtml.includes('turnstile')) &&
+    (lowerHtml.includes('verify you are human') || lowerHtml.includes('captcha') || lowerHtml.includes('security check'))
+  ) {
+    return { detected: true, type: 'CAPTCHA Human Verification' };
+  }
+
+  // HTTP 403 / 503 with firewall text
+  if ((httpStatus === 403 || httpStatus === 503) && (
+    lowerHtml.includes('access denied') ||
+    lowerHtml.includes('security check') ||
+    lowerHtml.includes('block') ||
+    lowerHtml.includes('firewall') ||
+    lowerHtml.includes('forbidden')
+  )) {
+    return { detected: true, type: 'Firewall Access Block (HTTP ' + httpStatus + ')' };
+  }
+
+  return { detected: false };
+}
+
+/**
  * Execute Smart Pipeline (4 Attempts) for fetching protected novel pages
  */
 async function executeSmartPipeline(
@@ -190,17 +249,21 @@ async function executeSmartPipeline(
 
   // All attempts failed: Construct Detailed Diagnostics Report
   const timeTakenMs = Date.now() - startTime;
-  const is403 = lastStatus === 403;
+  const is403 = lastStatus === 403 || lastStatus === 503;
 
   const diagnostics: FetchDiagnostics = {
     url,
     httpStatus: lastStatus,
     attemptsMade: 4,
     fetchMethod: 'Smart 4-Stage Resilient Pipeline',
+    fetchMode: 'standard',
+    htmlSource: 'server_http',
     parserUsed: parser.name,
+    protectionDetected: is403,
+    protectionType: is403 ? 'HTTP ' + lastStatus + ' Protection Challenge' : undefined,
     timeTakenMs,
     cause: is403
-      ? 'Website rejected request (HTTP 403 Forbidden).'
+      ? 'Website protection detected. This website requires a browser session before chapter content can be extracted.'
       : `Failed after 4 attempts (${lastErrorMsg}).`,
     possibleCauses: is403
       ? [
@@ -215,7 +278,7 @@ async function executeSmartPipeline(
           'Network connection interrupted during backend request'
         ],
     suggestedAction: is403
-      ? 'The site profile for this website may need updated custom headers or cookies, or the site restricts automated access.'
+      ? 'Retry using Browser-Assisted Fetch mode to capture HTML from an interactive browser session.'
       : 'Check the URL validity or retry with increased timeout settings.',
     headersUsed: lastHeadersSent,
     responseHeaders: lastResponseHeaders
@@ -229,7 +292,9 @@ async function executeSmartPipeline(
     lastHeadersSent,
     attemptsMade: 4,
     timeTakenMs,
-    lastErrorMsg,
+    lastErrorMsg: is403
+      ? 'Website protection detected. This website requires a browser session before chapter content can be extracted.'
+      : lastErrorMsg,
     diagnostics
   };
 }
@@ -260,11 +325,41 @@ async function startServer() {
         });
       }
 
+      // Check for Protection Page in returned HTML
+      const protectionResult = detectProtectionPage(pipelineResult.htmlString, pipelineResult.status);
+      const parser = getParserForUrl(url);
+
+      if (protectionResult.detected) {
+        return res.status(403).json({
+          success: false,
+          url,
+          error: 'Website protection detected. This website requires a browser session before chapter content can be extracted.',
+          diagnostics: {
+            url,
+            httpStatus: pipelineResult.status || 403,
+            attemptsMade: pipelineResult.attemptsMade,
+            fetchMethod: pipelineResult.methodUsed || 'Smart Pipeline',
+            fetchMode: 'standard',
+            htmlSource: 'server_http',
+            parserUsed: parser.name,
+            protectionDetected: true,
+            protectionType: protectionResult.type,
+            timeTakenMs: pipelineResult.timeTakenMs,
+            cause: 'Website protection detected (' + (protectionResult.type || 'Security Challenge') + ').',
+            possibleCauses: [
+              'Website anti-bot security challenge active',
+              'Cloudflare / WAF verification required',
+              'Browser session cookie required'
+            ],
+            suggestedAction: 'Retry using Browser-Assisted Fetch mode to capture HTML from an interactive browser session.',
+            headersUsed: pipelineResult.lastHeadersSent,
+            responseHeaders: pipelineResult.responseHeaders
+          }
+        });
+      }
+
       // Load into Cheerio
       const $ = cheerio.load(pipelineResult.htmlString);
-
-      // Detect Parser
-      const parser = getParserForUrl(url);
 
       // Execute Parser
       const parsedResult = parser.parse($, url);
@@ -294,7 +389,10 @@ async function startServer() {
           httpStatus: 200,
           attemptsMade: pipelineResult.attemptsMade,
           fetchMethod: pipelineResult.methodUsed || 'Smart Pipeline',
+          fetchMode: 'standard',
+          htmlSource: 'server_http',
           parserUsed: parser.name,
+          protectionDetected: false,
           timeTakenMs: pipelineResult.timeTakenMs,
           cause: 'Success',
           possibleCauses: [],
@@ -310,6 +408,97 @@ async function startServer() {
         success: false,
         url,
         error: err.message || 'Failed to fetch chapter'
+      });
+    }
+  });
+
+  // API 1B: Browser-Assisted HTML Parser Endpoint (Parses HTML source provided by Browser Session)
+  app.post('/api/parse-html', async (req, res) => {
+    const { html, url, customRules } = req.body;
+
+    if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+      return res.status(400).json({ success: false, error: 'Valid URL is required' });
+    }
+
+    if (!html || typeof html !== 'string' || html.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Rendered HTML source is required' });
+    }
+
+    try {
+      const startTime = Date.now();
+      const protectionResult = detectProtectionPage(html, 200);
+      const parser = getParserForUrl(url);
+
+      if (protectionResult.detected) {
+        return res.status(400).json({
+          success: false,
+          url,
+          error: 'Pasted HTML contains a website protection page (' + protectionResult.type + '). Please wait until the full chapter is loaded in your browser before capturing HTML.',
+          diagnostics: {
+            url,
+            httpStatus: 200,
+            attemptsMade: 1,
+            fetchMethod: 'Browser Session HTML Ingestion',
+            fetchMode: 'browser_assisted',
+            htmlSource: 'browser_session',
+            parserUsed: parser.name,
+            protectionDetected: true,
+            protectionType: protectionResult.type,
+            timeTakenMs: Date.now() - startTime,
+            cause: 'Browser HTML contains security verification challenge page.',
+            possibleCauses: [
+              'HTML was captured before Cloudflare verification finished',
+              'Security check page active in browser tab'
+            ],
+            suggestedAction: 'Complete security check in browser tab, then re-copy rendered HTML.',
+            headersUsed: {},
+            responseHeaders: {}
+          }
+        });
+      }
+
+      const $ = cheerio.load(html);
+      const parsedResult = parser.parse($, url);
+      const cleanedText = cleanChapterContent(parsedResult.content, customRules);
+      const stats = countWordsAndChars(cleanedText);
+
+      return res.json({
+        success: true,
+        url,
+        title: parsedResult.title || 'Untitled Chapter',
+        content: cleanedText,
+        rawContent: parsedResult.content,
+        novelTitle: parsedResult.novelTitle,
+        chapterNum: parsedResult.chapterNum,
+        nextUrl: parsedResult.nextUrl,
+        prevUrl: parsedResult.prevUrl,
+        parserName: parser.name,
+        parserId: parser.id,
+        wordCount: stats.wordCount,
+        charCount: stats.charCount,
+        diagnostics: {
+          url,
+          httpStatus: 200,
+          attemptsMade: 1,
+          fetchMethod: 'Browser Session Ingestion',
+          fetchMode: 'browser_assisted',
+          htmlSource: 'browser_session',
+          parserUsed: parser.name,
+          protectionDetected: false,
+          timeTakenMs: Date.now() - startTime,
+          cause: 'Success via Browser-Assisted Fetch',
+          possibleCauses: [],
+          suggestedAction: 'Chapter parsed successfully from rendered browser HTML.',
+          encodingDetected: 'utf-8',
+          headersUsed: {},
+          responseHeaders: {}
+        }
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        url,
+        error: err.message || 'Failed to process browser HTML'
       });
     }
   });

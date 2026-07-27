@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: FetchSettings = {
   copyFormat: 'plaintext',
   chapterHeaderTemplate: '--------------------------------\n{title}\n--------------------------------\n\n',
   fontSize: 'md',
+  fetchMode: 'standard',
   cleaningRules: DEFAULT_CLEANING_RULES
 };
 

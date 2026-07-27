@@ -91,12 +91,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Modal Content */}
         <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
           
-          {/* Section 1: Network & Retry Parameters */}
+          {/* Section 1: Network & Protection Parameters */}
           <div className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center space-x-1.5">
               <ShieldCheck className="w-4 h-4" />
               <span>Network & Protection</span>
             </h3>
+
+            {/* Fetch Mode Switch */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Default Fetch Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLocalSettings({ ...localSettings, fetchMode: 'standard' })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                    (localSettings.fetchMode || 'standard') === 'standard'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                      : 'bg-slate-50 dark:bg-slate-950/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  Standard Fetch
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLocalSettings({ ...localSettings, fetchMode: 'browser_assisted' })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                    localSettings.fetchMode === 'browser_assisted'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                      : 'bg-slate-50 dark:bg-slate-950/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  Browser-Assisted Fetch
+                </button>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

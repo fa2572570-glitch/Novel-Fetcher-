@@ -440,6 +440,19 @@ export const FetchInputPanel: React.FC<FetchInputPanelProps> = ({
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex flex-wrap items-center gap-4">
             
+            {/* Fetch Mode Switcher */}
+            <div className="flex items-center space-x-2">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">Fetch Mode:</span>
+              <select
+                value={settings.fetchMode || 'standard'}
+                onChange={(e) => onUpdateSettings({ ...settings, fetchMode: e.target.value as 'standard' | 'browser_assisted' })}
+                className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md px-2 py-1 font-bold"
+              >
+                <option value="standard">Standard Fetch</option>
+                <option value="browser_assisted">Browser-Assisted Fetch</option>
+              </select>
+            </div>
+
             {/* Parallel Workers */}
             <div className="flex items-center space-x-2">
               <span>Parallel Workers:</span>
@@ -485,7 +498,7 @@ export const FetchInputPanel: React.FC<FetchInputPanelProps> = ({
 
           <div className="flex items-center space-x-1 text-slate-400">
             <HelpCircle className="w-3.5 h-3.5" />
-            <span>Smart 4-Attempt Resilient Pipeline Active</span>
+            <span>{settings.fetchMode === 'browser_assisted' ? 'Browser Session Ingestion Enabled' : 'Smart 4-Attempt Resilient Pipeline Active'}</span>
           </div>
         </div>
 

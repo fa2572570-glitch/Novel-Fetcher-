@@ -10,11 +10,14 @@ import {
   ShieldAlert,
   ChevronDown,
   ChevronUp,
-  Activity
+  Activity,
+  Globe,
+  Sparkles
 } from 'lucide-react';
 import { ChapterItem, FetchSettings } from '../types';
 import { formatChapterOutput } from '../services/cleaner';
 import { FetchDiagnosticsModal } from './FetchDiagnosticsModal';
+import { BrowserAssistedModal } from './BrowserAssistedModal';
 
 interface ChapterCardProps {
   chapter: ChapterItem;
@@ -23,6 +26,7 @@ interface ChapterCardProps {
   onToggleSelect: (id: string) => void;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
+  onUpdateChapter?: (id: string, updated: Partial<ChapterItem>) => void;
 }
 
 export const ChapterCard: React.FC<ChapterCardProps> = ({
@@ -31,11 +35,13 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
   searchQuery,
   onToggleSelect,
   onRefresh,
-  onDelete
+  onDelete,
+  onUpdateChapter
 }) => {
   const [copied, setCopied] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isBrowserModalOpen, setIsBrowserModalOpen] = useState(false);
 
   // Format content for display
   const formattedText = formatChapterOutput(
@@ -54,6 +60,9 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
       console.error('Failed to copy:', err);
     }
   };
+
+  const isProtectionDetected = chapter.diagnostics?.protectionDetected || 
+    (chapter.errorReason && chapter.errorReason.toLowerCase().includes('website protection'));
 
   // Font size mapping
   const fontSizeClasses = {
@@ -250,6 +259,45 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
                 <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                 <p className="text-xs font-semibold">Fetching chapter content from web...</p>
               </div>
+            ) : isProtectionDetected ? (
+              /* Protection Page Detected Box with Prompt & Action */
+              <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-900 dark:text-amber-200 space-y-3">
+                <div className="flex items-center justify-between font-bold text-xs">
+                  <div className="flex items-center space-x-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-500" />
+                    <span>Website Protection Detected</span>
+                  </div>
+
+                  <button
+                    onClick={() => setIsDiagnosticsOpen(true)}
+                    className="text-[11px] underline font-mono text-amber-700 dark:text-amber-300 hover:text-amber-900"
+                  >
+                    View Error Report
+                  </button>
+                </div>
+
+                <p className="text-xs font-medium">
+                  Website protection detected. This website requires a browser session before chapter content can be extracted.
+                </p>
+
+                <div className="flex items-center space-x-2 pt-1">
+                  <button
+                    onClick={() => setIsBrowserModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Browser-Assisted Fetch</span>
+                  </button>
+
+                  <button
+                    onClick={() => onRefresh(chapter.id)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 text-amber-800 dark:text-amber-200 text-xs font-semibold flex items-center space-x-1 transition-all"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Retry Standard</span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="p-4 rounded-xl bg-rose-100/60 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 space-y-2">
                 <div className="flex items-center justify-between font-bold text-xs">
@@ -271,13 +319,23 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
                 <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80">
                   URL: {chapter.url}
                 </p>
-                <button
-                  onClick={() => onRefresh(chapter.id)}
-                  className="mt-2 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center space-x-1"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Retry Chapter Fetch</span>
-                </button>
+                <div className="flex items-center space-x-2 mt-2">
+                  <button
+                    onClick={() => onRefresh(chapter.id)}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center space-x-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Retry Chapter Fetch</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsBrowserModalOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-white text-xs font-semibold flex items-center space-x-1"
+                  >
+                    <Globe className="w-3 h-3" />
+                    <span>Browser-Assisted Fetch</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -294,6 +352,20 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
         url={chapter.url}
         errorReason={chapter.errorReason}
         onRetry={() => onRefresh(chapter.id)}
+        onBrowserAssistedFetch={() => setIsBrowserModalOpen(true)}
+      />
+
+      {/* Browser Assisted Fetch Modal */}
+      <BrowserAssistedModal
+        isOpen={isBrowserModalOpen}
+        onClose={() => setIsBrowserModalOpen(false)}
+        url={chapter.url}
+        settings={settings}
+        onSuccess={(updatedFields) => {
+          if (onUpdateChapter) {
+            onUpdateChapter(chapter.id, updatedFields);
+          }
+        }}
       />
     </>
   );

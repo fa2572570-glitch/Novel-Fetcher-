@@ -18,10 +18,76 @@ export interface FetchApiResponse {
   diagnostics?: FetchDiagnostics;
 }
 
+export async function parseHtmlFromBrowser(
+  html: string,
+  url: string,
+  settings: FetchSettings
+): Promise<FetchApiResponse> {
+  try {
+    const response = await fetch('/api/parse-html', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        html,
+        url,
+        customRules: settings.cleaningRules
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        url,
+        error: data.error || `HTTP ${response.status}`,
+        diagnostics: data.diagnostics
+      };
+    }
+
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      url,
+      error: err.message || 'Failed to process browser HTML'
+    };
+  }
+}
+
 export async function fetchChapterFromApi(
   url: string,
   settings: FetchSettings
 ): Promise<FetchApiResponse> {
+  // If settings.fetchMode is browser_assisted, attempt direct in-browser fetch first if possible
+  if (settings.fetchMode === 'browser_assisted') {
+    try {
+      // Attempt browser fetch directly in user's browser runtime
+      const startTime = Date.now();
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      });
+
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.length > 100) {
+          const parsedRes = await parseHtmlFromBrowser(text, url, settings);
+          if (parsedRes.success) {
+            return parsedRes;
+          }
+        }
+      }
+    } catch (err) {
+      // Client-side fetch failed (e.g. CORS block or browser session required)
+      // Fall through to server fetch endpoint which will detect protection if present
+    }
+  }
+
   try {
     const response = await fetch('/api/fetch', {
       method: 'POST',

@@ -570,6 +570,13 @@ export default function App() {
     showToast('Session deleted from history');
   };
 
+  const updateChapterFields = (id: string, updated: Partial<ChapterItem>) => {
+    setChapters(prev =>
+      prev.map(c => (c.id === id ? { ...c, ...updated } : c))
+    );
+    showToast('Chapter updated successfully via Browser-Assisted Fetch!');
+  };
+
   // Filtered and Sorted Chapters list
   const filteredChapters = chapters.filter(c => {
     if (filter === 'success') return c.status === 'success';
@@ -696,6 +703,7 @@ export default function App() {
                   onToggleSelect={toggleSelectChapter}
                   onRefresh={refetchChapter}
                   onDelete={deleteChapter}
+                  onUpdateChapter={updateChapterFields}
                 />
               ))}
             </div>
