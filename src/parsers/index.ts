@@ -36,6 +36,7 @@ export function getParserList(): ParserInfo[] {
     name: p.name,
     domains: p.domains,
     description: p.description,
-    exampleUrl: p.exampleUrl
+    exampleUrl: p.exampleUrl,
+    siteProfile: p.siteProfile
   }));
 }

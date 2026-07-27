@@ -1,5 +1,5 @@
 import type { CheerioAPI } from 'cheerio';
-import { NovelParser, ParsedChapterResult } from './base';
+import { NovelParser, ParsedChapterResult, extractNextChapterUrl } from './base';
 
 export const BiqugeParser: NovelParser = {
   id: 'biquge',
@@ -7,6 +7,14 @@ export const BiqugeParser: NovelParser = {
   domains: ['biquge.tv', 'biquge.co', 'bqg.org', 'biquge5200.net', 'biquge.com.cn', 'biquge.biz', 'xbiquge.la'],
   description: 'Parser for Biquge and clone Chinese novel sites.',
   exampleUrl: 'https://www.biquge.co/book/123/456.html',
+  siteProfile: {
+    encoding: 'gbk',
+    contentSelector: '#content, #htmlContent, .content',
+    titleSelector: '.bookname h1, h1',
+    nextChapterSelector: 'a:contains("下一章"), a:contains("下一页"), #next_url, .next_page',
+    prevChapterSelector: 'a:contains("上一章"), a:contains("上一页")',
+    adRemovalRules: ['script', 'style', 'a', 'p[style*="color"]', 'div[id*="ad"]']
+  },
 
   canParse(url: string): boolean {
     const lower = url.toLowerCase();
@@ -14,6 +22,8 @@ export const BiqugeParser: NovelParser = {
   },
 
   parse($: CheerioAPI, url: string): ParsedChapterResult {
+    const nextUrl = extractNextChapterUrl($, url, this.siteProfile?.nextChapterSelector);
+
     let title = $('.bookname h1, h1').first().text().trim();
     if (!title) {
       title = $('title').text().split('-')[0].trim();
@@ -38,7 +48,9 @@ export const BiqugeParser: NovelParser = {
       title,
       content: rawText,
       novelTitle: novelTitle || undefined,
-      chapterNum
+      chapterNum,
+      nextUrl
     };
   }
 };
+

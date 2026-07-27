@@ -1,5 +1,5 @@
 import type { CheerioAPI } from 'cheerio';
-import { NovelParser, ParsedChapterResult } from './base';
+import { NovelParser, ParsedChapterResult, extractNextChapterUrl } from './base';
 
 export const NovelBinParser: NovelParser = {
   id: 'novelbin',
@@ -7,6 +7,14 @@ export const NovelBinParser: NovelParser = {
   domains: ['novelbin.me', 'novelbin.com', 'novelbin.net', 'novelbin.org', 'novelfull.com', 'novelfull.net'],
   description: 'Specialized scraper for NovelBin and NovelFull chapters with watermark removal.',
   exampleUrl: 'https://novelbin.me/novel-book/novel-title/chapter-1',
+  siteProfile: {
+    encoding: 'utf-8',
+    contentSelector: '#chr-content, .chr-c, #chapter-content',
+    titleSelector: '.chr-title, .chapter-title, h2, h1',
+    nextChapterSelector: '#next_chap, a.btn-next, a:contains("Next")',
+    prevChapterSelector: '#prev_chap, a.btn-prev, a:contains("Prev")',
+    adRemovalRules: ['.pirate', 'script', 'style', '.ads', '.adsbygoogle', '.nav-buttons', 'div[class*="ad"]']
+  },
 
   canParse(url: string): boolean {
     const lower = url.toLowerCase();
@@ -14,6 +22,8 @@ export const NovelBinParser: NovelParser = {
   },
 
   parse($: CheerioAPI, url: string): ParsedChapterResult {
+    const nextUrl = extractNextChapterUrl($, url, this.siteProfile?.nextChapterSelector);
+
     let title = $('.chr-title, .chapter-title, h2, h1').first().text().trim();
     if (!title) {
       title = $('title').text().split('-')[0].trim();
@@ -44,7 +54,9 @@ export const NovelBinParser: NovelParser = {
       title,
       content: rawText,
       novelTitle: novelTitle || undefined,
-      chapterNum
+      chapterNum,
+      nextUrl
     };
   }
 };
+

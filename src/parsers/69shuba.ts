@@ -1,5 +1,5 @@
 import type { CheerioAPI } from 'cheerio';
-import { NovelParser, ParsedChapterResult } from './base';
+import { NovelParser, ParsedChapterResult, extractNextChapterUrl } from './base';
 
 export const Shuba69Parser: NovelParser = {
   id: '69shuba',
@@ -7,6 +7,18 @@ export const Shuba69Parser: NovelParser = {
   domains: ['69shuba.com', '69xinshu.com', '69shuba.cx', '69shuba.pro', '69shuba.tw', '69shu.com'],
   description: 'Specialized parser for 69shuba Chinese novel platform with GBK encoding support and noise removal.',
   exampleUrl: 'https://www.69shuba.com/txt/12345/67890',
+  siteProfile: {
+    encoding: 'gbk',
+    contentSelector: '.txtnav, #txtnav',
+    titleSelector: '.txtnav h1, #txtnav h1',
+    nextChapterSelector: '.page1 a:contains("下一章"), .page1 a:contains("下一頁"), .bottom_tools a:contains("下一章")',
+    prevChapterSelector: '.page1 a:contains("上一章"), .page1 a:contains("上一頁")',
+    adRemovalRules: ['h1', '.txtright', '.bottom_tools', '.page_tools', 'script', 'style', '.page1', '.top_nav', '.clear', '.a_title', '.txtnav_head'],
+    requiredHeaders: {
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      'Referer': 'https://www.69shuba.com/'
+    }
+  },
 
   canParse(url: string): boolean {
     const lower = url.toLowerCase();
@@ -14,6 +26,9 @@ export const Shuba69Parser: NovelParser = {
   },
 
   parse($: CheerioAPI, url: string): ParsedChapterResult {
+    // Extract next chapter URL before removing navigation elements
+    const nextUrl = extractNextChapterUrl($, url, this.siteProfile?.nextChapterSelector);
+
     // Extract title from .txtnav h1 or h1 or title tag
     let title = $('.txtnav h1').text().trim() ||
                 $('#txtnav h1').text().trim() ||
@@ -56,7 +71,9 @@ export const Shuba69Parser: NovelParser = {
       title,
       content: rawText,
       novelTitle: novelTitle || undefined,
-      chapterNum
+      chapterNum,
+      nextUrl
     };
   }
 };
+

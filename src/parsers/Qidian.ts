@@ -1,5 +1,5 @@
 import type { CheerioAPI } from 'cheerio';
-import { NovelParser, ParsedChapterResult } from './base';
+import { NovelParser, ParsedChapterResult, extractNextChapterUrl } from './base';
 
 export const QidianParser: NovelParser = {
   id: 'qidian',
@@ -7,6 +7,14 @@ export const QidianParser: NovelParser = {
   domains: ['qidian.com', 'webnovel.com'],
   description: 'Parser for Qidian and Webnovel web chapter pages.',
   exampleUrl: 'https://www.webnovel.com/book/12345/67890',
+  siteProfile: {
+    encoding: 'utf-8',
+    contentSelector: '.main-text-wrap, .chapter-content, .read-content, .cha-content',
+    titleSelector: '.chapter-title, .chapter-name, h1.j_chapterName, h1',
+    nextChapterSelector: '#j_chapterNext, a.next-chap, a:contains("Next")',
+    prevChapterSelector: '#j_chapterPrev, a.prev-chap, a:contains("Previous")',
+    adRemovalRules: ['script', 'style', '.pirate', '.author-say', '.ad-box', '.chapter-control']
+  },
 
   canParse(url: string): boolean {
     const lower = url.toLowerCase();
@@ -14,6 +22,8 @@ export const QidianParser: NovelParser = {
   },
 
   parse($: CheerioAPI, url: string): ParsedChapterResult {
+    const nextUrl = extractNextChapterUrl($, url, this.siteProfile?.nextChapterSelector);
+
     let title = $('.chapter-title, .chapter-name, h1.j_chapterName, h1').first().text().trim();
     if (!title) {
       title = $('title').text().split('-')[0].trim();
@@ -38,7 +48,9 @@ export const QidianParser: NovelParser = {
       title,
       content: rawText,
       novelTitle: novelTitle || undefined,
-      chapterNum
+      chapterNum,
+      nextUrl
     };
   }
 };
+

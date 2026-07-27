@@ -14,7 +14,8 @@ import {
   FetchSettings,
   BatchStats,
   SavedSession,
-  ParserInfo
+  ParserInfo,
+  FetchBatchRequest
 } from './types';
 import {
   loadSettings,
@@ -112,7 +113,18 @@ export default function App() {
   /**
    * Universal Batch Fetch Queue Engine
    */
-  const startBatchFetch = async (urls: string[]) => {
+  const startBatchFetch = async (request: string[] | FetchBatchRequest) => {
+    let urls: string[] = [];
+
+    if (Array.isArray(request)) {
+      urls = request;
+    } else if (request.mode === 'urls' || request.mode === 'placeholder') {
+      urls = request.urls || [];
+    } else if (request.mode === 'follow_next' && request.firstUrl) {
+      // Handled sequentially below
+      urls = [request.firstUrl];
+    }
+
     if (urls.length === 0) return;
 
     cancelRequestedRef.current = false;
@@ -120,34 +132,15 @@ export default function App() {
     setIsFetchingBatch(true);
 
     const startTime = Date.now();
-
-    // Create pending chapter stubs
-    const newItems: ChapterItem[] = urls.map((url, index) => {
-      // Try to parse chapter number from URL e.g. /chapter-251
-      const numMatch = url.match(/(?:chapter|chap|txt|id)[-/]?(\d+)/i);
-      const chapterNum = numMatch ? parseInt(numMatch[1], 10) : undefined;
-
-      return {
-        id: 'chap_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 4),
-        url,
-        title: chapterNum ? `Chapter ${chapterNum}` : `Chapter ${chapters.length + index + 1}`,
-        content: '',
-        status: 'pending',
-        wordCount: 0,
-        charCount: 0,
-        parserName: 'Detecting...',
-        selected: true,
-        chapterNum
-      };
-    });
-
-    // Merge with existing chapters
-    setChapters(prev => [...prev, ...newItems]);
+    const isFollowNextMode = !Array.isArray(request) && request.mode === 'follow_next';
+    const targetChapterCount = isFollowNextMode && request.startChapter && request.endChapter
+      ? (request.endChapter - request.startChapter + 1)
+      : urls.length;
 
     // Initialize Batch Telemetry Stats
     setBatchStats({
-      total: urls.length,
-      pending: urls.length,
+      total: targetChapterCount,
+      pending: targetChapterCount,
       fetching: 0,
       success: 0,
       failed: 0,
@@ -159,39 +152,47 @@ export default function App() {
       currentActiveUrls: []
     });
 
-    // Queue worker execution
-    const queue = [...newItems];
     let completedCount = 0;
     let successCount = 0;
     let failedCount = 0;
 
-    const concurrency = settings.concurrency || 3;
+    if (isFollowNextMode && !Array.isArray(request) && request.firstUrl) {
+      // METHOD 2: Follow Next Chapter Links Sequential Crawler Engine
+      let currentUrl: string | undefined = request.firstUrl;
+      let chapterIndex = request.startChapter || 1;
 
-    // Helper worker task
-    const worker = async () => {
-      while (queue.length > 0) {
+      while (currentUrl && completedCount < targetChapterCount) {
         if (cancelRequestedRef.current) break;
 
-        // Check for pause state loop
         while (isPausedRef.current && !cancelRequestedRef.current) {
           await new Promise(r => setTimeout(r, 200));
         }
 
         if (cancelRequestedRef.current) break;
 
-        const item = queue.shift();
-        if (!item) break;
+        const chapId = 'chap_' + Date.now() + '_' + completedCount + '_' + Math.random().toString(36).substr(2, 4);
+        
+        // Add stub to UI
+        const stubItem: ChapterItem = {
+          id: chapId,
+          url: currentUrl,
+          title: `Chapter ${chapterIndex}`,
+          content: '',
+          status: 'fetching',
+          wordCount: 0,
+          charCount: 0,
+          parserName: 'Detecting...',
+          selected: true,
+          chapterNum: chapterIndex
+        };
 
-        // Mark chapter as fetching
-        setChapters(prev =>
-          prev.map(c => (c.id === item.id ? { ...c, status: 'fetching' } : c))
-        );
+        setChapters(prev => [...prev, stubItem]);
 
         setBatchStats(prev => ({
           ...prev,
-          pending: Math.max(0, prev.pending - 1),
-          fetching: prev.fetching + 1,
-          currentActiveUrls: [...prev.currentActiveUrls, item.url]
+          fetching: 1,
+          pending: Math.max(0, targetChapterCount - completedCount - 1),
+          currentActiveUrls: [currentUrl!]
         }));
 
         // Execute fetch with retries
@@ -201,25 +202,22 @@ export default function App() {
 
         while (attempts <= maxRetries) {
           attempts++;
-          result = await fetchChapterFromApi(item.url, settings);
+          result = await fetchChapterFromApi(currentUrl, settings);
           if (result.success) break;
           if (attempts <= maxRetries) {
-            // Wait retry delay
             await new Promise(r => setTimeout(r, 500 * attempts));
           }
         }
 
-        // Delay between request calls
         if (settings.delayMs > 0) {
           await new Promise(r => setTimeout(r, settings.delayMs));
         }
 
-        // Update Chapter Item in state
         if (result && result.success) {
           successCount++;
           setChapters(prev =>
             prev.map(c =>
-              c.id === item.id
+              c.id === chapId
                 ? {
                     ...c,
                     title: result.title || c.title,
@@ -231,50 +229,180 @@ export default function App() {
                     wordCount: result.wordCount || 0,
                     charCount: result.charCount || 0,
                     parserName: result.parserName || 'Generic Extractor',
+                    diagnostics: result.diagnostics,
                     fetchedAt: Date.now()
                   }
                 : c
             )
           );
+
+          // Get next chapter URL from parser
+          currentUrl = result.nextUrl;
         } else {
           failedCount++;
           setChapters(prev =>
             prev.map(c =>
-              c.id === item.id
+              c.id === chapId
                 ? {
                     ...c,
                     status: 'error',
-                    errorReason: result?.error || 'Failed to extract content'
+                    errorReason: result?.error || 'Failed to extract content',
+                    diagnostics: result?.diagnostics
                   }
                 : c
             )
           );
+          // Stop chain if next URL cannot be determined
+          currentUrl = undefined;
         }
 
         completedCount++;
+        chapterIndex++;
 
-        // Update Stats
         const elapsed = Date.now() - startTime;
         const speed = completedCount > 0 ? completedCount / (elapsed / 1000) : 0;
-        const remaining = urls.length - completedCount;
+        const remaining = targetChapterCount - completedCount;
         const estTime = speed > 0 ? (remaining / speed) * 1000 : 0;
 
         setBatchStats(prev => ({
           ...prev,
-          fetching: Math.max(0, prev.fetching - 1),
+          fetching: 0,
           success: successCount,
           failed: failedCount,
           elapsedTimeMs: elapsed,
           avgSpeedChapPerSec: speed,
           estRemainingTimeMs: estTime,
-          currentActiveUrls: prev.currentActiveUrls.filter(u => u !== item.url)
+          currentActiveUrls: []
         }));
       }
-    };
 
-    // Run workers concurrently
-    const workers = Array.from({ length: Math.min(concurrency, urls.length) }, () => worker());
-    await Promise.all(workers);
+    } else {
+      // Standard Concurrent Batch Queue Engine
+      const newItems: ChapterItem[] = urls.map((url, index) => {
+        const numMatch = url.match(/(?:chapter|chap|txt|id)[-/]?(\d+)/i);
+        const chapterNum = numMatch ? parseInt(numMatch[1], 10) : undefined;
+
+        return {
+          id: 'chap_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 4),
+          url,
+          title: chapterNum ? `Chapter ${chapterNum}` : `Chapter ${chapters.length + index + 1}`,
+          content: '',
+          status: 'pending',
+          wordCount: 0,
+          charCount: 0,
+          parserName: 'Detecting...',
+          selected: true,
+          chapterNum
+        };
+      });
+
+      setChapters(prev => [...prev, ...newItems]);
+
+      const queue = [...newItems];
+      const concurrency = settings.concurrency || 3;
+
+      const worker = async () => {
+        while (queue.length > 0) {
+          if (cancelRequestedRef.current) break;
+
+          while (isPausedRef.current && !cancelRequestedRef.current) {
+            await new Promise(r => setTimeout(r, 200));
+          }
+
+          if (cancelRequestedRef.current) break;
+
+          const item = queue.shift();
+          if (!item) break;
+
+          setChapters(prev =>
+            prev.map(c => (c.id === item.id ? { ...c, status: 'fetching' } : c))
+          );
+
+          setBatchStats(prev => ({
+            ...prev,
+            pending: Math.max(0, prev.pending - 1),
+            fetching: prev.fetching + 1,
+            currentActiveUrls: [...prev.currentActiveUrls, item.url]
+          }));
+
+          let attempts = 0;
+          let result = null;
+          const maxRetries = settings.retryCount || 2;
+
+          while (attempts <= maxRetries) {
+            attempts++;
+            result = await fetchChapterFromApi(item.url, settings);
+            if (result.success) break;
+            if (attempts <= maxRetries) {
+              await new Promise(r => setTimeout(r, 500 * attempts));
+            }
+          }
+
+          if (settings.delayMs > 0) {
+            await new Promise(r => setTimeout(r, settings.delayMs));
+          }
+
+          if (result && result.success) {
+            successCount++;
+            setChapters(prev =>
+              prev.map(c =>
+                c.id === item.id
+                  ? {
+                      ...c,
+                      title: result.title || c.title,
+                      content: result.content || '',
+                      rawContent: result.rawContent,
+                      novelTitle: result.novelTitle,
+                      chapterNum: result.chapterNum || c.chapterNum,
+                      status: 'success',
+                      wordCount: result.wordCount || 0,
+                      charCount: result.charCount || 0,
+                      parserName: result.parserName || 'Generic Extractor',
+                      diagnostics: result.diagnostics,
+                      fetchedAt: Date.now()
+                    }
+                  : c
+              )
+            );
+          } else {
+            failedCount++;
+            setChapters(prev =>
+              prev.map(c =>
+                c.id === item.id
+                  ? {
+                      ...c,
+                      status: 'error',
+                      errorReason: result?.error || 'Failed to extract content',
+                      diagnostics: result?.diagnostics
+                    }
+                  : c
+              )
+            );
+          }
+
+          completedCount++;
+
+          const elapsed = Date.now() - startTime;
+          const speed = completedCount > 0 ? completedCount / (elapsed / 1000) : 0;
+          const remaining = urls.length - completedCount;
+          const estTime = speed > 0 ? (remaining / speed) * 1000 : 0;
+
+          setBatchStats(prev => ({
+            ...prev,
+            fetching: Math.max(0, prev.fetching - 1),
+            success: successCount,
+            failed: failedCount,
+            elapsedTimeMs: elapsed,
+            avgSpeedChapPerSec: speed,
+            estRemainingTimeMs: estTime,
+            currentActiveUrls: prev.currentActiveUrls.filter(u => u !== item.url)
+          }));
+        }
+      };
+
+      const workers = Array.from({ length: Math.min(concurrency, urls.length) }, () => worker());
+      await Promise.all(workers);
+    }
 
     setIsFetchingBatch(false);
     showToast(`Batch completed: ${successCount} fetched, ${failedCount} failed.`);

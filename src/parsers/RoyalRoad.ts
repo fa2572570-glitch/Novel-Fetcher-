@@ -1,5 +1,5 @@
 import type { CheerioAPI } from 'cheerio';
-import { NovelParser, ParsedChapterResult } from './base';
+import { NovelParser, ParsedChapterResult, extractNextChapterUrl } from './base';
 
 export const RoyalRoadParser: NovelParser = {
   id: 'royalroad',
@@ -7,12 +7,22 @@ export const RoyalRoadParser: NovelParser = {
   domains: ['royalroad.com'],
   description: 'Clean extraction for RoyalRoad fiction chapters.',
   exampleUrl: 'https://www.royalroad.com/fiction/12345/novel-title/chapter/67890/chapter-1',
+  siteProfile: {
+    encoding: 'utf-8',
+    contentSelector: '.chapter-inner, .chapter-content',
+    titleSelector: '.chapter-container h1, h1',
+    nextChapterSelector: 'a.btn:contains("Next"), a[rel="next"]',
+    prevChapterSelector: 'a.btn:contains("Previous")',
+    adRemovalRules: ['.author-note-portlet', 'script', 'style', '.portlet', '.clear', '.chapter-footer']
+  },
 
   canParse(url: string): boolean {
     return url.toLowerCase().includes('royalroad.com');
   },
 
   parse($: CheerioAPI, url: string): ParsedChapterResult {
+    const nextUrl = extractNextChapterUrl($, url, this.siteProfile?.nextChapterSelector);
+
     let title = $('.chapter-container h1, h1').first().text().trim();
     if (!title) {
       title = $('title').text().split('-')[0].trim();
@@ -39,7 +49,9 @@ export const RoyalRoadParser: NovelParser = {
       title,
       content: rawText,
       novelTitle: novelTitle || undefined,
-      chapterNum
+      chapterNum,
+      nextUrl
     };
   }
 };
+

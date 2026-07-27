@@ -1,5 +1,5 @@
 import type { CheerioAPI } from 'cheerio';
-import { NovelParser, ParsedChapterResult } from './base';
+import { NovelParser, ParsedChapterResult, extractNextChapterUrl } from './base';
 
 export const GenericParser: NovelParser = {
   id: 'generic',
@@ -7,12 +7,22 @@ export const GenericParser: NovelParser = {
   domains: ['*'],
   description: 'Smart AI/Heuristic fallback extractor for any web novel site.',
   exampleUrl: 'https://any-novel-site.com/chapter-1',
+  siteProfile: {
+    encoding: 'auto',
+    contentSelector: '#chapter-content, #content, .chapter-content, .entry-content, article, main',
+    titleSelector: 'h1, h2.chapter-title, .entry-title',
+    nextChapterSelector: 'a[rel~="next"], a:contains("Next"), a:contains("下一章")',
+    prevChapterSelector: 'a[rel~="prev"], a:contains("Prev"), a:contains("上一章")',
+    adRemovalRules: ['script', 'style', 'iframe', 'nav', 'header', 'footer', 'aside', '.comments', '.sidebar', '.ad', '.ads']
+  },
 
   canParse(_url: string): boolean {
     return true; // Always available as fallback
   },
 
-  parse($: CheerioAPI, _url: string): ParsedChapterResult {
+  parse($: CheerioAPI, url: string): ParsedChapterResult {
+    const nextUrl = extractNextChapterUrl($, url);
+
     // 1. Try finding page title
     let title = $('h1').first().text().trim() ||
                 $('h2.chapter-title, .entry-title, .post-title').first().text().trim();
@@ -96,7 +106,9 @@ export const GenericParser: NovelParser = {
     return {
       title,
       content: extractedText,
-      chapterNum
+      chapterNum,
+      nextUrl
     };
   }
 };
+
