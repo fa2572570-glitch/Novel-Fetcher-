@@ -8,6 +8,9 @@ import { SettingsModal } from './components/SettingsModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { SupportedParsersModal } from './components/SupportedParsersModal';
 import { CopyPreviewModal } from './components/CopyPreviewModal';
+import { AndroidBatchAssistantModal } from './components/AndroidBatchAssistantModal';
+import { CopyFallbackModal } from './components/CopyFallbackModal';
+import { performCopyToClipboard } from './utils/copyUtils';
 
 import {
   ChapterItem,
@@ -49,6 +52,28 @@ export default function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isParsersOpen, setIsParsersOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Android & Browser Assistant State
+  const [androidBatchState, setAndroidBatchState] = useState<{
+    isOpen: boolean;
+    initialUrl: string;
+    targetCount: number;
+  }>({
+    isOpen: false,
+    initialUrl: '',
+    targetCount: 10
+  });
+
+  // Bulk Copy Fallback Modal State
+  const [copyFallbackModal, setCopyFallbackModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    text: string;
+  }>({
+    isOpen: false,
+    title: '',
+    text: ''
+  });
 
   // Parsers List & Saved History
   const [parsers, setParsers] = useState<ParserInfo[]>([]);
@@ -502,8 +527,17 @@ export default function App() {
       .map(c => formatChapterOutput(c.title, c.content, settings.copyFormat, settings.chapterHeaderTemplate))
       .join('\n\n');
 
-    await navigator.clipboard.writeText(merged);
-    showToast(`Copied ${selected.length} selected chapters to clipboard!`);
+    const res = await performCopyToClipboard(merged);
+    if (res.success) {
+      showToast(`✓ Copied ${selected.length} selected chapters to clipboard!`);
+    } else {
+      setCopyFallbackModal({
+        isOpen: true,
+        title: `${selected.length} Selected Chapters`,
+        text: merged
+      });
+      showToast('✗ Automatic copy restricted. Copy assistant launched.');
+    }
   };
 
   const handleCopyAll = async () => {
@@ -514,8 +548,17 @@ export default function App() {
       .map(c => formatChapterOutput(c.title, c.content, settings.copyFormat, settings.chapterHeaderTemplate))
       .join('\n\n');
 
-    await navigator.clipboard.writeText(merged);
-    showToast(`Copied all ${successOnly.length} chapters to clipboard!`);
+    const res = await performCopyToClipboard(merged);
+    if (res.success) {
+      showToast(`✓ Copied all ${successOnly.length} chapters to clipboard!`);
+    } else {
+      setCopyFallbackModal({
+        isOpen: true,
+        title: `All ${successOnly.length} Chapters`,
+        text: merged
+      });
+      showToast('✗ Automatic copy restricted. Copy assistant launched.');
+    }
   };
 
   // Download Operations
@@ -647,6 +690,13 @@ export default function App() {
           isFetching={isFetchingBatch}
           settings={settings}
           onUpdateSettings={handleUpdateSettings}
+          onLaunchBatchAssistant={(startUrl, targetCount) => {
+            setAndroidBatchState({
+              isOpen: true,
+              initialUrl: startUrl,
+              targetCount
+            });
+          }}
         />
 
         {/* 2. Batch Progress & Telemetry Card (Visible during or after batch operations) */}
@@ -704,6 +754,7 @@ export default function App() {
                   onRefresh={refetchChapter}
                   onDelete={deleteChapter}
                   onUpdateChapter={updateChapterFields}
+                  onToast={showToast}
                 />
               ))}
             </div>
@@ -752,6 +803,35 @@ export default function App() {
         onClose={() => setIsPreviewOpen(false)}
         chapters={chapters}
         settings={settings}
+      />
+
+      {/* Android Batch Assistant Modal */}
+      <AndroidBatchAssistantModal
+        isOpen={androidBatchState.isOpen}
+        onClose={() => setAndroidBatchState(prev => ({ ...prev, isOpen: false }))}
+        initialUrl={androidBatchState.initialUrl}
+        targetCount={androidBatchState.targetCount}
+        delaySeconds={settings.requestDelayMs / 1000}
+        settings={settings}
+        onAddChapter={(chap) => {
+          setChapters(prev => {
+            const exists = prev.some(c => c.url === chap.url || c.id === chap.id);
+            if (exists) {
+              return prev.map(c => (c.url === chap.url || c.id === chap.id) ? chap : c);
+            }
+            return [chap, ...prev];
+          });
+        }}
+        onToast={showToast}
+      />
+
+      {/* Bulk Copy Fallback Modal */}
+      <CopyFallbackModal
+        isOpen={copyFallbackModal.isOpen}
+        onClose={() => setCopyFallbackModal(prev => ({ ...prev, isOpen: false }))}
+        title={copyFallbackModal.title}
+        text={copyFallbackModal.text}
+        onToast={showToast}
       />
 
     </div>

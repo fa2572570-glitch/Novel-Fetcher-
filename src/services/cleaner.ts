@@ -16,9 +16,41 @@ export const DEFAULT_CLEANING_RULES: CleaningRules = {
 };
 
 /**
- * Common advertisement, watermark, and navigation patterns
+ * Decodes escaped sequences in HTML strings before parsing:
+ * \n -> real newline, \t -> tab, \x3C -> <, \x3E -> >, \", \/
+ */
+export function unescapeHtmlSource(html: string): string {
+  if (!html) return '';
+  let str = html;
+
+  // Hex byte escapes (\x3C -> <, \x3E -> >)
+  str = str.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+  // Unicode escapes (\u003C -> <)
+  str = str.replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+  // Literal escaped characters
+  str = str.replace(/\\n/g, '\n');
+  str = str.replace(/\\r/g, '\r');
+  str = str.replace(/\\t/g, '\t');
+  str = str.replace(/\\"/g, '"');
+  str = str.replace(/\\'/g, "'");
+  str = str.replace(/\\\//g, '/');
+
+  return str;
+}
+
+/**
+ * Common advertisement, watermark, metadata, and navigation patterns
  */
 const COMMON_NOISE_PATTERNS = [
+  // Metadata lines (author, date, word count, update time)
+  /^(作者|字数|更新|更新时间|发布时间|类别|状态|Author|Date|Word count|Update time|Category|Status)\s*[:：]/i,
+  /^更新时间\s*[:：]?\s*\d{4}[-/.]\d{2}[-/.]\d{2}/i,
+  /^\d{4}[-/.]\d{2}[-/.]\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/i, // standalone timestamps
+  /^(书名|novel name)\s*[:：]/i,
+  /^(本章字数|chapter size)\s*[:：]/i,
+
   // English promotional/watermark lines
   /Read (only|latest chapters) at [a-zA-Z0-9.\-/]+/gi,
   /Visit [a-zA-Z0-9.\-/]+ for (more|extra|latest) chapters/gi,

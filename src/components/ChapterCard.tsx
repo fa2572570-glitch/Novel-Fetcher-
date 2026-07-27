@@ -18,6 +18,8 @@ import { ChapterItem, FetchSettings } from '../types';
 import { formatChapterOutput } from '../services/cleaner';
 import { FetchDiagnosticsModal } from './FetchDiagnosticsModal';
 import { BrowserAssistedModal } from './BrowserAssistedModal';
+import { CopyFallbackModal } from './CopyFallbackModal';
+import { performCopyToClipboard } from '../utils/copyUtils';
 
 interface ChapterCardProps {
   chapter: ChapterItem;
@@ -27,6 +29,7 @@ interface ChapterCardProps {
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateChapter?: (id: string, updated: Partial<ChapterItem>) => void;
+  onToast?: (msg: string) => void;
 }
 
 export const ChapterCard: React.FC<ChapterCardProps> = ({
@@ -36,12 +39,14 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
   onToggleSelect,
   onRefresh,
   onDelete,
-  onUpdateChapter
+  onUpdateChapter,
+  onToast
 }) => {
   const [copied, setCopied] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [isBrowserModalOpen, setIsBrowserModalOpen] = useState(false);
+  const [isCopyFallbackOpen, setIsCopyFallbackOpen] = useState(false);
 
   // Format content for display
   const formattedText = formatChapterOutput(
@@ -52,12 +57,14 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
   );
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(formattedText);
+    const res = await performCopyToClipboard(formattedText);
+    if (res.success) {
       setCopied(true);
+      if (onToast) onToast('✓ Chapter copied successfully');
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
+    } else {
+      setIsCopyFallbackOpen(true);
+      if (onToast) onToast('✗ Automatic copy restricted. Use the copy assistant below.');
     }
   };
 
@@ -366,6 +373,15 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
             onUpdateChapter(chapter.id, updatedFields);
           }
         }}
+      />
+
+      {/* Android Copy Fallback Modal */}
+      <CopyFallbackModal
+        isOpen={isCopyFallbackOpen}
+        onClose={() => setIsCopyFallbackOpen(false)}
+        title={chapter.title}
+        text={formattedText}
+        onToast={onToast}
       />
     </>
   );

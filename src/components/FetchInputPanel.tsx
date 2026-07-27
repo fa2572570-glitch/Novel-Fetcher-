@@ -12,6 +12,7 @@ interface FetchInputPanelProps {
   isFetching: boolean;
   settings: FetchSettings;
   onUpdateSettings: (newSettings: FetchSettings) => void;
+  onLaunchBatchAssistant?: (startUrl: string, targetCount: number) => void;
 }
 
 export const FetchInputPanel: React.FC<FetchInputPanelProps> = ({
@@ -19,12 +20,14 @@ export const FetchInputPanel: React.FC<FetchInputPanelProps> = ({
   isFetching,
   settings,
   onUpdateSettings,
+  onLaunchBatchAssistant
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multiple' | 'range'>('single');
 
   // Single URL state
   const [singleUrl, setSingleUrl] = useState('');
   const [detectedParser, setDetectedParser] = useState<{ parserName: string; parserId: string } | null>(null);
+  const [batchTarget, setBatchTarget] = useState<number>(10);
 
   // Multiple URLs state
   const [multipleUrls, setMultipleUrls] = useState('');
@@ -203,6 +206,50 @@ export const FetchInputPanel: React.FC<FetchInputPanelProps> = ({
                   <span>{isFetching ? 'Fetching...' : 'Fetch Chapter'}</span>
                 </button>
               </div>
+            </div>
+
+            {/* Batch Target Selector & Launch Assistant */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Batch Target Scope:
+                </span>
+                
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: 'Fetch Current', val: 1 },
+                    { label: 'Fetch Next 10', val: 10 },
+                    { label: 'Fetch Next 25', val: 25 },
+                    { label: 'Fetch Next 50', val: 50 },
+                    { label: 'Until Stopped', val: 9999 }
+                  ].map(opt => (
+                    <button
+                      key={opt.val}
+                      type="button"
+                      onClick={() => setBatchTarget(opt.val)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border ${
+                        batchTarget === opt.val
+                          ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                          : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {onLaunchBatchAssistant && (
+                <button
+                  type="button"
+                  disabled={!singleUrl.trim()}
+                  onClick={() => onLaunchBatchAssistant(singleUrl.trim(), batchTarget)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-bold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  <span>Launch Android / Browser Batch Assistant ({batchTarget === 9999 ? 'Until Stopped' : `${batchTarget} Chapters`})</span>
+                </button>
+              )}
             </div>
 
             {/* Detected Parser Feedback */}

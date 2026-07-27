@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import { getParserForUrl, getParserList } from './src/parsers/index';
-import { cleanChapterContent, countWordsAndChars } from './src/services/cleaner';
+import { cleanChapterContent, countWordsAndChars, unescapeHtmlSource } from './src/services/cleaner';
 import { FetchDiagnostics, ParserTestResult } from './src/types';
 
 /**
@@ -358,8 +358,9 @@ async function startServer() {
         });
       }
 
-      // Load into Cheerio
-      const $ = cheerio.load(pipelineResult.htmlString);
+      // Unescape HTML & Load into Cheerio
+      const unescapedHtml = unescapeHtmlSource(pipelineResult.htmlString);
+      const $ = cheerio.load(unescapedHtml);
 
       // Execute Parser
       const parsedResult = parser.parse($, url);
@@ -457,7 +458,8 @@ async function startServer() {
         });
       }
 
-      const $ = cheerio.load(html);
+      const unescapedInputHtml = unescapeHtmlSource(html);
+      const $ = cheerio.load(unescapedInputHtml);
       const parsedResult = parser.parse($, url);
       const cleanedText = cleanChapterContent(parsedResult.content, customRules);
       const stats = countWordsAndChars(cleanedText);

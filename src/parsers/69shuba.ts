@@ -47,8 +47,8 @@ export const Shuba69Parser: NovelParser = {
     const contentEl = $('.txtnav, #txtnav, .content, #content, .read-content').first().clone();
 
     // Remove noise elements inside contentEl
-    contentEl.find('h1, .txtright, .bottom_tools, .page_tools, script, style, .page1, .top_nav, .clear, .a_title, .txtnav_head').remove();
-    contentEl.find('a[href*="69shuba"], div[class*="ad"], div[id*="ad"]').remove();
+    contentEl.find('h1, #txtright, .txtright, .bottom-ad, .bottom_ad, .bottom_tools, .page_tools, script, style, iframe, .page1, .top_nav, .clear, .a_title, .txtnav_head, .tuijian, .recommend, #tuijian, footer, nav, .menu, .setting, #setting, div[class*="ad"], div[id*="ad"]').remove();
+    contentEl.find('a[href*="69shuba"], a[href*="69shu"]').remove();
 
     // Convert <br> or <p> tags into newlines
     contentEl.find('br').replaceWith('\n');
