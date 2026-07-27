@@ -1,0 +1,6 @@
+{
+  "name": "Web Novel Chapter Fetcher",
+  "description": "Universal chapter extraction tool to fetch, clean, format, and export novel chapters from various websites.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
